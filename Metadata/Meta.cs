@@ -7,23 +7,27 @@ using System.Threading.Tasks;
 
 namespace AG.XTabEngine.Meta
 {
-    public record RowKey(ImmutableArray<string> Dimensions)
+    public sealed class RowKey
     {
-        public override string ToString() => string.Join("~", Dimensions);
-        public string this[int index] => Dimensions[index];
-        public int Count => Dimensions.Length;
+        private readonly List<string> _components;
 
-        public static RowKey Of(params string[] parts) => new(ImmutableArray.Create(parts));
-
-        public virtual bool Equals(RowKey? other) =>
-            other is not null && Dimensions.SequenceEqual(other.Dimensions);
-
-        public override int GetHashCode()
+        private RowKey(IEnumerable<string> components)
         {
-            var hash = new HashCode();
-            foreach (var dim in Dimensions)
-                hash.Add(dim);
-            return hash.ToHashCode();
+            _components = components.ToList();
         }
+
+        public static RowKey Of(params string[] parts) => new(parts);
+
+        public IReadOnlyList<string> Components => _components;
+
+        public override string ToString() => string.Join("-", _components);
+
+        public override bool Equals(object? obj) =>
+            obj is RowKey other &&
+            _components.SequenceEqual(other._components);
+
+        public override int GetHashCode() =>
+            HashCode.Combine(_components.Count, _components.Aggregate(0, (hash, val) => hash ^ val.GetHashCode()));
     }
+
 }
