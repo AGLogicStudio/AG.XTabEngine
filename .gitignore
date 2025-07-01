@@ -1,0 +1,11 @@
+bin/
+obj/
+*.ps1
+*.bat
+*.user
+*.suo
+*.nupkg
+*.snupkg
+*.vs/
+TestResults/
+.vscode/
