@@ -226,7 +226,8 @@ namespace AG.XTabEngine.Extensions
             this XTabResult result,
             char delimiter = '|',
             bool includeTotals = false,
-            bool sortForPresentation = false)
+            bool sortForPresentation = false,
+            Func<string, string>? aliasFor = null)
         {
             var snapshot = sortForPresentation ? result.SortForPresentation() : result;
             var sb = new StringBuilder();
@@ -241,7 +242,8 @@ namespace AG.XTabEngine.Extensions
             // HEADER: pad with blank cells to align with row keys
             var header = keyLabels
                 .Concat(dataCols)
-                .AppendIf(includeTotals, "Total");
+                .AppendIf(includeTotals, "Total")
+                .Select(label => aliasFor?.Invoke(label) ?? label);
 
             AppendRow(sb, header, delimiter);
 
@@ -269,15 +271,23 @@ namespace AG.XTabEngine.Extensions
             // TOTALS ROW
             if (includeTotals && snapshot.ColumnTotals.Any())
             {
-                var totals = new List<string> { "Totals" };
+                var totals = new List<string>();
+
+                // 🔧 Alias the "Totals" label, if applicable
+                var totalRowLabel = aliasFor?.Invoke("Totals") ?? "Totals";
+                totals.Add(totalRowLabel);
+
+                // Fill remaining key column slots with blanks
                 totals.AddRange(Enumerable.Repeat("", Math.Max(0, keyLabels.Count - 1)));
 
+                // Add column totals
                 totals.AddRange(dataCols.Select(col =>
                     snapshot.GetDataColumns().Contains(col) &&
                     snapshot.ColumnTotals.TryGetValue(col, out var sum)
                         ? sum.ToString()
                         : ""));
 
+                // Add grand total if both row and column totals exist
                 if (snapshot.ColumnsGrandTotal.HasValue && snapshot.RowsGrandTotal.HasValue)
                 {
                     var match = Math.Abs(snapshot.ColumnsGrandTotal.Value - snapshot.RowsGrandTotal.Value) < 1e-6;
@@ -289,6 +299,7 @@ namespace AG.XTabEngine.Extensions
 
                 AppendRow(sb, totals, delimiter);
             }
+
 
             return sb.ToString();
         }

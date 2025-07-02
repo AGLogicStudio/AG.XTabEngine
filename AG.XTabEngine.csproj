@@ -8,7 +8,6 @@
 
   <ItemGroup>
     <Folder Include="Tests\" />
-    <Folder Include="Rendering\" />
   </ItemGroup>
 
 </Project>

@@ -19,6 +19,8 @@ namespace AG.XTabEngine.Meta
         public static RowKey Of(params string[] parts) => new(parts);
 
         public IReadOnlyList<string> Components => _components;
+        public IReadOnlyList<string> Values => _components;  // used by renderers for HTML output
+
 
         public override string ToString() => string.Join("-", _components);
 
