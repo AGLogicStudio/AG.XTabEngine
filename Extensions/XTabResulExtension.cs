@@ -1,6 +1,7 @@
 ﻿using AG.XTabEngine.Meta;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -75,10 +76,12 @@ namespace AG.XTabEngine.Extensions
 
             return result;
         }
-
         public static XTabResult WithTotals(this XTabResult source)
         {
             var result = new XTabResult();
+
+            // ✅ Preserve RowKeyColumns so output headers are correct
+            result = result.WithRowKeyColumns(source.RowKeyColumns.ToArray());
 
             // Copy column headers
             foreach (var col in source.Columns)
@@ -109,7 +112,6 @@ namespace AG.XTabEngine.Extensions
                         columnTotals[col] += val;
                     }
                 }
-
             }
 
             // Assign column totals and compute grand total from column sums
@@ -124,6 +126,7 @@ namespace AG.XTabEngine.Extensions
 
             return result;
         }
+
 
         public static XTabResult SortRowsBy(this XTabResult source, Comparison<RowKey> comparison)
         {
@@ -197,9 +200,9 @@ namespace AG.XTabEngine.Extensions
 
 
         public static XTabResult SortForPresentation(
-    this XTabResult result,
-    Comparison<RowKey>? rowComparer = null,
-    Comparison<string>? columnComparer = null)
+            this XTabResult result,
+            Comparison<RowKey>? rowComparer = null,
+            Comparison<string>? columnComparer = null)
         {
             var rowSort = rowComparer ?? ((a, b) =>
                 result.RowTotals.TryGetValue(b, out var tb) && result.RowTotals.TryGetValue(a, out var ta)
@@ -211,16 +214,19 @@ namespace AG.XTabEngine.Extensions
                     ? tb.CompareTo(ta)
                     : string.Compare(a, b, StringComparison.Ordinal));
 
-            return result
+            var sorted = result
                 .SortRowsBy(rowSort)
                 .SortColumnsByData(colSort);
+
+            // ✅ Reapply row key metadata
+            return sorted.WithRowKeyColumns(result.RowKeyColumns.ToArray());
         }
+
         public static string ToDelimited(
             this XTabResult result,
-            char delimiter = '|', // "|",
+            char delimiter = '|',
             bool includeTotals = false,
             bool sortForPresentation = false)
-
         {
             var snapshot = sortForPresentation ? result.SortForPresentation() : result;
             var sb = new StringBuilder();
@@ -230,54 +236,47 @@ namespace AG.XTabEngine.Extensions
                 .Where(col => !keyLabels.Contains(col))
                 .ToList();
 
-            // HEADER
-            sb.Append(delimiter);
-            foreach (var label in keyLabels)
-                sb.Append(label + delimiter);
-            foreach (var col in dataCols)
-                sb.Append(col + delimiter);
-            if (includeTotals)
-                sb.Append("Total").Append(delimiter);
-            sb.AppendLine();
+            Debug.WriteLine($"🔍 RowKeyColumns: {string.Join(",", snapshot.RowKeyColumns)}");
 
-            // SEPARATOR
-            sb.Append(delimiter);
-            foreach (var _ in keyLabels)
-                sb.Append("---").Append(delimiter);
-            foreach (var _ in dataCols)
-                sb.Append("---").Append(delimiter);
-            if (includeTotals)
-                sb.Append("---").Append(delimiter);
-            sb.AppendLine();
+            // HEADER: pad with blank cells to align with row keys
+            var header = keyLabels
+                .Concat(dataCols)
+                .AppendIf(includeTotals, "Total");
+
+            AppendRow(sb, header, delimiter);
+
+
+            // SEPARATOR (Markdown-style only)
+            if (delimiter == '|')
+            {
+                var separator = Enumerable.Repeat("---", keyLabels.Count)
+                    .Concat(Enumerable.Repeat("---", dataCols.Count))
+                    .AppendIf(includeTotals, "---");
+                AppendRow(sb, separator, delimiter);
+            }
 
             // DATA ROWS
             foreach (var (rowKey, row) in snapshot.Table)
             {
-                sb.Append(delimiter);
-                foreach (var part in rowKey.Components)
-                    sb.Append(part + delimiter);
-                foreach (var col in dataCols)
-                    sb.Append(row.TryGetValue(col, out var val) ? $"{val}{delimiter}" : $" {delimiter}");
-                if (includeTotals && snapshot.RowTotals.TryGetValue(rowKey, out var total))
-                    sb.Append($"{total}{delimiter}");
-                sb.AppendLine();
+                var cells = rowKey.Components
+                    .Concat(dataCols.Select(col =>
+                        row.TryGetValue(col, out var val) ? val.ToString() : ""))
+                    .AppendIf(includeTotals,
+                        snapshot.RowTotals.TryGetValue(rowKey, out var total) ? total.ToString() : "");
+                AppendRow(sb, cells, delimiter);
             }
 
             // TOTALS ROW
             if (includeTotals && snapshot.ColumnTotals.Any())
             {
-                sb.Append($"{delimiter}Totals{delimiter}");
-                for (int i = 0; i < keyLabels.Count + 1; i++)
-                    sb.Append(delimiter);
+                var totals = new List<string> { "Totals" };
+                totals.AddRange(Enumerable.Repeat("", Math.Max(0, keyLabels.Count - 1)));
 
-                foreach (var col in dataCols)
-                {
-                    if (snapshot.GetDataColumns().Contains(col) &&
-                        snapshot.ColumnTotals.TryGetValue(col, out var sum))
-                        sb.Append($"{sum}{delimiter}");
-                    else
-                        sb.Append(" ").Append(delimiter);
-                }
+                totals.AddRange(dataCols.Select(col =>
+                    snapshot.GetDataColumns().Contains(col) &&
+                    snapshot.ColumnTotals.TryGetValue(col, out var sum)
+                        ? sum.ToString()
+                        : ""));
 
                 if (snapshot.ColumnsGrandTotal.HasValue && snapshot.RowsGrandTotal.HasValue)
                 {
@@ -285,14 +284,23 @@ namespace AG.XTabEngine.Extensions
                     var label = match
                         ? $"{snapshot.ColumnsGrandTotal.Value}"
                         : $"⚠️ {snapshot.ColumnsGrandTotal.Value} ≠ {snapshot.RowsGrandTotal.Value}";
-                    sb.Append(label + delimiter);
+                    totals.Add(label);
                 }
 
-                sb.AppendLine();
+                AppendRow(sb, totals, delimiter);
             }
 
             return sb.ToString();
         }
+
+
+        private static void AppendRow(StringBuilder sb, IEnumerable<string> values, char delimiter)
+        {
+            sb.AppendLine(string.Join(delimiter, values));
+        }
+
+        private static IEnumerable<T> AppendIf<T>(this IEnumerable<T> source, bool condition, T value) =>
+            condition ? source.Append(value) : source;
 
 
     }
