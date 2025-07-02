@@ -217,8 +217,10 @@ namespace AG.XTabEngine.Extensions
         }
         public static string ToDelimited(
             this XTabResult result,
+            char delimiter = '|', // "|",
             bool includeTotals = false,
             bool sortForPresentation = false)
+
         {
             var snapshot = sortForPresentation ? result.SortForPresentation() : result;
             var sb = new StringBuilder();
@@ -229,52 +231,52 @@ namespace AG.XTabEngine.Extensions
                 .ToList();
 
             // HEADER
-            sb.Append("|");
+            sb.Append(delimiter);
             foreach (var label in keyLabels)
-                sb.Append(label + "|");
+                sb.Append(label + delimiter);
             foreach (var col in dataCols)
-                sb.Append(col + "|");
+                sb.Append(col + delimiter);
             if (includeTotals)
-                sb.Append("Total|");
+                sb.Append("Total").Append(delimiter);
             sb.AppendLine();
 
             // SEPARATOR
-            sb.Append("|");
+            sb.Append(delimiter);
             foreach (var _ in keyLabels)
-                sb.Append("---|");
+                sb.Append("---").Append(delimiter);
             foreach (var _ in dataCols)
-                sb.Append("---|");
+                sb.Append("---").Append(delimiter);
             if (includeTotals)
-                sb.Append("---|");
+                sb.Append("---").Append(delimiter);
             sb.AppendLine();
 
             // DATA ROWS
             foreach (var (rowKey, row) in snapshot.Table)
             {
-                sb.Append("|");
+                sb.Append(delimiter);
                 foreach (var part in rowKey.Components)
-                    sb.Append(part + "|");
+                    sb.Append(part + delimiter);
                 foreach (var col in dataCols)
-                    sb.Append(row.TryGetValue(col, out var val) ? $"{val}|" : " |");
+                    sb.Append(row.TryGetValue(col, out var val) ? $"{val}{delimiter}" : $" {delimiter}");
                 if (includeTotals && snapshot.RowTotals.TryGetValue(rowKey, out var total))
-                    sb.Append($"{total}|");
+                    sb.Append($"{total}{delimiter}");
                 sb.AppendLine();
             }
 
             // TOTALS ROW
             if (includeTotals && snapshot.ColumnTotals.Any())
             {
-                sb.Append("|Totals|");
+                sb.Append($"{delimiter}Totals{delimiter}");
                 for (int i = 0; i < keyLabels.Count + 1; i++)
-                    sb.Append("|");
+                    sb.Append(delimiter);
 
                 foreach (var col in dataCols)
                 {
                     if (snapshot.GetDataColumns().Contains(col) &&
                         snapshot.ColumnTotals.TryGetValue(col, out var sum))
-                        sb.Append($"{sum}|");
+                        sb.Append($"{sum}{delimiter}");
                     else
-                        sb.Append(" |");
+                        sb.Append(" ").Append(delimiter);
                 }
 
                 if (snapshot.ColumnsGrandTotal.HasValue && snapshot.RowsGrandTotal.HasValue)
@@ -283,7 +285,7 @@ namespace AG.XTabEngine.Extensions
                     var label = match
                         ? $"{snapshot.ColumnsGrandTotal.Value}"
                         : $"⚠️ {snapshot.ColumnsGrandTotal.Value} ≠ {snapshot.RowsGrandTotal.Value}";
-                    sb.Append(label + "|");
+                    sb.Append(label + delimiter);
                 }
 
                 sb.AppendLine();
